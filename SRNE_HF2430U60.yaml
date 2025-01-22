@@ -1,0 +1,1351 @@
+#########################################################################################
+# Substituion and Variables
+#########################################################################################
+substitutions:
+  device_internal_name: srne1
+  device_sampling_time: 30s
+
+esphome:
+  name: srne1
+  friendly_name: SRNE1
+
+#########################################################################################
+# Board Config
+#########################################################################################
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+
+#########################################################################################
+# Logging
+#########################################################################################
+
+# Enable logging
+logger:
+  level: WARN
+  baud_rate: 0
+
+#########################################################################################
+# Enable Home Assistant API
+#########################################################################################
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: "ABCXZY"
+
+#########################################################################################
+# OTA
+#########################################################################################
+
+ota:
+  - platform: esphome
+    password: "ABCXZY"
+
+#########################################################################################
+# WiFi
+#########################################################################################
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "Srne1 Fallback Hotspot"
+    password: "H9rztARBWRIw"
+
+  # Domain name for the device
+  #domain: .local.com
+
+captive_portal:
+
+#########################################################################################
+# Web Server
+#########################################################################################
+web_server:
+  port: 80
+  version: 2
+  include_internal: True
+  auth:
+    username: "JohnDoe"
+    password: "abc123456"
+  local: True
+
+#########################################################################################
+# MCU Config
+#########################################################################################
+
+uart:
+  id: mod_bus
+  tx_pin: GPIO1
+  rx_pin: GPIO3
+  baud_rate: 9600
+  stop_bits: 1
+ 
+modbus:
+  id: tdt1_modbus
+  flow_control_pin: GPIO4
+ 
+modbus_controller:
+  - id: srne1
+    address: 0x01
+    modbus_id: tdt1_modbus
+    setup_priority: -10
+    update_interval: 5000ms #data refresh rate
+
+#########################################################################################
+# Time
+#########################################################################################
+time:
+  - platform: homeassistant
+
+#########################################################################################
+# Sensors
+#########################################################################################
+sensor:
+  #-----------------------------------------------------------------------------------------
+  # ESP Generic Sensors
+  #-----------------------------------------------------------------------------------------
+
+  # WiFi
+  - platform: wifi_signal
+    name: "WiFi Signal Sensor"
+    id: ${device_internal_name}_wifi_signal_sensor
+    update_interval: ${device_sampling_time}
+
+  # Uptime
+  - platform: uptime
+    name: "Uptime Sensor"
+    id: ${device_internal_name}_uptime_sensor
+    update_interval: ${device_sampling_time}
+    internal: true
+    on_raw_value:
+      then:
+        - text_sensor.template.publish:
+            id: ${device_internal_name}_uptime_human
+            state: !lambda |-
+              int seconds = round(id(${device_internal_name}_uptime_sensor).raw_state);
+              int days = seconds / (24 * 3600);
+              seconds = seconds % (24 * 3600);
+              int hours = seconds / 3600;
+              seconds = seconds % 3600;
+              int minutes = seconds /  60;
+              seconds = seconds % 60;
+              return (
+                (days ? to_string(days) + "d " : "") +
+                (hours ? to_string(hours) + "h " : "") +
+                (minutes ? to_string(minutes) + "m " : "") +
+                (to_string(seconds) + "s")
+              ).c_str();
+
+  #################### System Information ##################
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "Current Load Power" #name for HA
+    id: srne_current_load_Power #id for HA
+    register_type: holding
+    address: 0x021B #register address (see modbus manual)
+    unit_of_measurement: "W"
+    accuracy_decimals: 2
+    device_class: power
+    state_class: measurement
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "Grid Charge Current" #name for HA
+    id: srne_LineChgCurr #id for HA
+    register_type: holding
+    address: 0x021E #register address (see modbus manual)
+    unit_of_measurement: "A"
+    device_class: current
+    icon: mdi:current-ac
+    state_class: measurement
+    filters:
+      - multiply: 0.1
+    
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "charger Power (Main + PV)" #name for HA
+    id: srne_charger_Power #id for HA
+    register_type: holding
+    address: 0x010E #register address (see modbus manual)
+    unit_of_measurement: "W"
+    accuracy_decimals: 0
+    device_class: power
+    state_class: measurement  
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "PV Power" #name for HA
+    id: srne_pv_power #id for HA
+    register_type: holding
+    address: 0x0109 #register address (see modbus manual)
+    unit_of_measurement: "W"
+    accuracy_decimals: 0
+    device_class: power
+    state_class: measurement  
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "Battery SOC" #name for HA
+    id: srne_SOC #id for HA
+    register_type: holding
+    address: 0x0100 #register address (see modbus manual)
+    state_class: measurement
+    unit_of_measurement: "%"
+    device_class: battery
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "Boost Charging Time"
+    id: srne_BatImprovChgTime
+    address: 0xE012
+    register_type: holding
+    unit_of_measurement: "min"
+    icon: mdi:timer-sand
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "Boost Return Voltage" #name for HA
+    id: srne_BatImprovChgBackVolt #id for HA
+    register_type: holding
+    address: 0xE00A #register address (see modbus manual)
+    unit_of_measurement: "V"
+    accuracy_decimals: 2
+    device_class: Voltage
+    state_class: measurement
+    filters:
+      - multiply: 0.2
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "PV Panel Current" #name for HA
+    id: srne_PV_Panel_Current #id for HA
+    register_type: holding
+    address: 0x0108 #register address (see modbus manual)
+    state_class: measurement
+    unit_of_measurement: A
+    device_class: current
+    filters:
+      - multiply: 0.1
+
+  # Charging current from the PV power on the battery side
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "PV Mppt Current" #name for HA
+    id: srne_Ibuck1 #id for HA
+    register_type: holding
+    address: 0x224
+    state_class: measurement
+    unit_of_measurement: A
+    device_class: current
+    filters:
+      - multiply: 0.1
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "Max Charge Current" #name for HA
+    id: srne_max_charge_current #id for HA
+    register_type: holding
+    address: 0xE120
+    icon: mdi:current-dc
+    state_class: measurement
+    unit_of_measurement: A
+    device_class: current
+    filters:
+      - multiply: 0.1
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "Battery Current" #name for HA
+    id: srne_Battery_Current #id for HA
+    register_type: holding
+    address: 0x102 #register address (see modbus manual)
+    value_type: S_WORD
+    icon: mdi:current-dc
+    state_class: measurement
+    unit_of_measurement: A
+    device_class: current
+    force_update: True
+    filters:
+      - multiply: 0.1
+      - lambda: |-
+          return -x;
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "Fault Code" #name for HA
+    id: srne_fault_code #id for HA
+    register_type: holding
+    address: 0x0204 #register address (see modbus manual)
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "Fault Code 2" #name for HA
+    id: srne_fault_code2 #id for HA
+    register_type: holding
+    address: 0x0205 #register address (see modbus manual)
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "Grid Frequency" #name for HA
+    id: srne_grid_freq #id for HA
+    register_type: holding
+    address: 0x0215 #register address (see modbus manual)
+    unit_of_measurement: Hz
+    filters:
+      - multiply: 0.01
+    
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "Inverter Frequency" #name for HA
+    id: srne_inverter_freq #id for HA
+    register_type: holding
+    address: 0x0218 #register address (see modbus manual)
+    unit_of_measurement: Hz 
+    filters:
+      - multiply: 0.01  
+
+  # Energy sensors with kWh
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "Power Generation of the day" #name for HA
+    id: srne_power_generation_of_the_day #id for HA
+    register_type: holding
+    address: 0xF02F #register address (see modbus manual)
+    unit_of_measurement: kWh
+    accuracy_decimals: 1
+    device_class: Energy
+    state_class: total_increasing
+    filters:
+      - multiply: 0.1   
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "Load Power Consumption of the day" #name for HA
+    id: srne_load_power_consumption_of_the_day #id for HA
+    register_type: holding
+    address: 0xF030 #register address (see modbus manual)
+    unit_of_measurement: kWh
+    accuracy_decimals: 1
+    device_class: Energy
+    state_class: total_increasing
+    filters:
+      - multiply: 0.1      
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "Accumulated Solar generation" #name for HA
+    id: srne_aaccumulated_solar_generation #id for HA
+    register_type: holding
+    value_type: U_WORD
+    address: 0xF038 #register address (see modbus manual)
+    unit_of_measurement: kWh
+    accuracy_decimals: 1
+    device_class: Energy
+    state_class: total_increasing
+    filters:
+      - multiply: 0.1 
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "Accumulated power consumption of load" #name for HA
+    id: srne_accumulated_power_consumption_of_load #id for HA
+    register_type: holding
+    address: 0xF03A #register address (see modbus manual)
+    unit_of_measurement: kWh
+    accuracy_decimals: 1
+    device_class: Energy
+    state_class: total_increasing
+    filters:
+      - multiply: 0.1   
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "Accumulated power consumption by load from mains" #name for HA
+    id: srne_accumulated_power_consumption_by_load_from_mains #id for HA
+    register_type: holding
+    address: 0xF048 #register address (see modbus manual)
+    unit_of_measurement: kWh
+    accuracy_decimals: 1
+    device_class: Energy
+    state_class: total_increasing
+    filters:
+      - multiply: 0.1  
+      
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "Accumulated charge from mains" #name for HA
+    id: srne_accumulated_charge_from_mains #id for HA
+    register_type: holding
+    address: 0xF046 #register address (see modbus manual)
+    unit_of_measurement: kWh
+    accuracy_decimals: 1
+    device_class: Energy
+    state_class: total_increasing
+    filters:
+      - multiply: 0.1       
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "Accumulated working hours of bypass" #name for HA
+    id: srne_accumulated_working_hours_of_bypasss #id for HA
+    register_type: holding
+    address: 0xF04B #register address (see modbus manual)
+    unit_of_measurement: hours
+    accuracy_decimals: 1
+    state_class: measurement
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "Grid Voltage" #name for HA
+    id: srne_grid_voltage #id for HA
+    register_type: holding
+    address: 0x0213 #register address (see modbus manual)
+    unit_of_measurement: "V"
+    accuracy_decimals: 1
+    device_class: Voltage
+    state_class: measurement
+    filters:
+      - multiply: 0.1
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "Inverter Voltage" #name for HA
+    id: srne_inverter_voltage #id for HA
+    register_type: holding
+    address: 0x0216 #register address (see modbus manual)
+    unit_of_measurement: "V"
+    accuracy_decimals: 1
+    device_class: Voltage
+    state_class: measurement
+    filters:
+      - multiply: 0.1  
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "Battery Voltage" #name for HA
+    id: srne_pack_voltage #id for HA
+    register_type: holding
+    address: 0x0101 #register address (see modbus manual)
+    unit_of_measurement: "V"
+    accuracy_decimals: 2
+    device_class: Voltage
+    force_update: True
+    state_class: measurement
+    filters:
+      - multiply: 0.1       
+
+  # The load is switched to the AC power when the battery
+  # voltage falls below this judged point.
+  # Min 9v, Max 15.5v, Default 11.5v, Mutiplier 0.1
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "Battery to Utility Voltage"
+    id: srne_BatSwitchDcVolt
+    register_type: holding
+    address: 0xE01B
+    unit_of_measurement: "V"
+    accuracy_decimals: 2
+    device_class: Voltage
+    state_class: measurement
+    filters:
+      - multiply: 0.2
+
+  # Only valid for the lithium battery
+  # when the current in the constant voltage charging state is lower than this value, charging is stopped
+  # Min 0A, Max 10A, Default 2A, Mutiplier 0.1
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "Stop CV Current Limit"
+    id: srne_StopChgCurrSet
+    register_type: holding
+    address: 0xE01C
+    unit_of_measurement: "A"
+    device_class: current
+    state_class: measurement
+    filters:
+      - multiply: 0.1
+
+  # When the battery voltage is higher than the judged point,
+  # the inverter is switched back.
+  # Min 9v, Max 15.5v, Default 14v, Mutiplier 0.1
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "Utility to Battery Voltage" #name for HA
+    id: srne_BattVoltSwToInv #id for HA
+    register_type: holding
+    address: 0xE022 # Register address (see modbus manual)
+    unit_of_measurement: "V"
+    accuracy_decimals: 2
+    device_class: Voltage
+    state_class: measurement
+    filters:
+      - multiply: 0.2
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "Li Battery Activation Current"
+    id: srne_LiBattActiveCurrSet
+    register_type: holding
+    address: 0xE024
+    unit_of_measurement: "A"
+    device_class: current
+    state_class: measurement
+    filters:
+      - multiply: 0.1
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "Over Discharge Return Voltage" #name for HA
+    id: srne_over_discharge_return_voltage #id for HA
+    register_type: holding
+    address: 0xE00B #register address (see modbus manual)
+    unit_of_measurement: "V"
+    accuracy_decimals: 2
+    device_class: Voltage
+    state_class: measurement
+    filters:
+      - multiply: 0.2
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "Over Discharge Voltage" #name for HA
+    id: srne_over_discharge_voltage #id for HA
+    register_type: holding
+    address: 0xE00D #register address (see modbus manual)
+    unit_of_measurement: "V"
+    accuracy_decimals: 2
+    device_class: Voltage
+    state_class: measurement
+    filters:
+      - multiply: 0.2
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "Over Discharge Delay Time" #name for HA
+    id: srne_BatOverDischgDelayTime #id for HA
+    register_type: holding
+    address: 0xE010 #register address (see modbus manual)
+    unit_of_measurement: "S"
+    accuracy_decimals: 1
+    device_class: duration
+    state_class: measurement
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "Battery Disconnect Voltage" #name for HA
+    id: srne_BatDischgLimitVolt #id for HA
+    register_type: holding
+    address: 0xE00E #register address (see modbus manual)
+    unit_of_measurement: "V"
+    accuracy_decimals: 2
+    device_class: Voltage
+    state_class: measurement
+    filters:
+      - multiply: 0.2
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "PV Voltage" #name for HA
+    id: srne_pv_voltage #id for HA
+    register_type: holding
+    address: 0x0107 #register address (see modbus manual)
+    unit_of_measurement: "V"
+    accuracy_decimals: 0
+    device_class: Voltage
+    state_class: measurement
+    filters:
+      - multiply: 0.1
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "PV Charge Current Limit" #name for HA
+    id: srne_PvChgCurrSet #id for HA
+    register_type: holding
+    address: 0xE001 #register address (see modbus manual)
+    icon: mdi:current-dc
+    state_class: measurement
+    unit_of_measurement: A
+    device_class: current
+    accuracy_decimals: 0
+    filters:
+      - multiply: 0.1
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "History Solar generation" #name for HA
+    id: srne_history_solar_generation #id for HA
+    register_type: holding
+    address: 0xF01D #register address (see modbus manual)
+    unit_of_measurement: kWh
+    accuracy_decimals: 1
+    device_class: Energy
+    state_class: total_increasing
+    filters:
+      - multiply: 0.1 
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "History Solar generation2" #name for HA
+    id: srne_history_solar_generation2 #id for HA
+    register_type: holding
+    address: 0xF01E #register address (see modbus manual)
+    unit_of_measurement: kWh
+    accuracy_decimals: 1
+    device_class: Energy
+    state_class: total_increasing
+    filters:
+      - multiply: 0.1       
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "Battery Over Voltage Limit" #name for HA
+    id: srne_BatOverVolt #id for HA
+    register_type: holding
+    address: 0xE005 #register address (see modbus manual)
+    unit_of_measurement: "V"
+    accuracy_decimals: 0
+    device_class: Voltage
+    state_class: measurement
+    filters:
+      - multiply: 0.2
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "Overcharge Protection Voltage" #name for HA
+    id: srne_BatChgLimitVolt #id for HA
+    register_type: holding
+    address: 0xE006 #register address (see modbus manual)
+    unit_of_measurement: "V"
+    accuracy_decimals: 0
+    device_class: Voltage
+    state_class: measurement
+    filters:
+      - multiply: 0.2
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "Boost Charge Voltage" #name for HA
+    id: srne_BatImprovChgVolt #id for HA
+    register_type: holding
+    address: 0xE008 #register address (see modbus manual)
+    unit_of_measurement: "V"
+    accuracy_decimals: 2
+    device_class: Voltage
+    state_class: measurement
+    filters:
+      - multiply: 0.2
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "Float Charge Voltage" #name for HA
+    id: srne_BatFloatChgVolt #id for HA
+    register_type: holding
+    address: 0xE009 #register address (see modbus manual)
+    unit_of_measurement: "V"
+    accuracy_decimals: 2
+    device_class: Voltage
+    state_class: measurement
+    filters:
+      - multiply: 0.2
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "Machine type code" #name for HA
+    id: srne_machine_type_code #id for HA
+    register_type: holding
+    address: 0x000B #register address (see modbus manual)
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "Software Version"
+    id: srne_SoftWareVersion
+    register_type: holding
+    address: 0x0014
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "Grid Current" #name for HA
+    id: srne_grid_current #id for HA
+    register_type: holding
+    address: 0x0214 #register address (see modbus manual)
+    state_class: measurement
+    unit_of_measurement: A
+    device_class: current
+    filters:
+      - multiply: 0.1
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "Max Grid Charging Current" #name for HA
+    id: srne_IbattLineChgLimit #id for HA
+    register_type: holding
+    address: 0xE205 #register address (see modbus manual)
+    icon: mdi:current-dc
+    state_class: measurement
+    unit_of_measurement: A
+    device_class: current
+    filters:
+      - multiply: 0.1
+
+  - platform: template
+    name: "Grid Power"
+    id: srne_grid_power
+    unit_of_measurement: "W"
+    accuracy_decimals: 2
+    lambda: |-
+      if (id(srne_grid_current).has_state() && id(srne_grid_voltage).has_state()) {
+        return id(srne_grid_current).state * id(srne_grid_voltage).state;
+      } else {
+        return NAN;  // Return NAN if any sensor is unavailable
+      }
+
+  #################### System Temperatures ##################
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "DC to DC Temperature" #name for HA
+    id: srne_Tempera #id for HA
+    register_type: holding
+    address: 0x0220 #register address (see modbus manual)
+    value_type: S_WORD
+    state_class: measurement
+    unit_of_measurement: C
+    accuracy_decimals: 2
+    device_class: temperature
+    filters:
+      - multiply: 0.1
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "DC to AC Temperature" #name for HA
+    id: srne_Temperb #id for HA
+    register_type: holding
+    address: 0x0221 #register address (see modbus manual)
+    value_type: S_WORD
+    state_class: measurement
+    unit_of_measurement: C
+    accuracy_decimals: 2
+    device_class: temperature
+    filters:
+      - multiply: 0.1
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "Transformer Temperature" #name for HA
+    id: srne_Temperc #id for HA
+    register_type: holding
+    address: 0x0222 #register address (see modbus manual)
+    value_type: S_WORD
+    state_class: measurement
+    unit_of_measurement: C
+    accuracy_decimals: 2
+    device_class: temperature
+    filters:
+      - multiply: 0.1
+
+  #################### Historical Data ##################
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "Historical data of power consumption by load 1 day ago" #name for HA
+    id: srne_historical_power_consumption_by_load_1_day_ago #id for HA
+    register_type: holding
+    address: 0xF01C #register address (see modbus manual)
+    unit_of_measurement: kWh
+    accuracy_decimals: 1
+    device_class: Energy
+    state_class: total_increasing
+    filters:
+    - multiply: 0.1 
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "Historical data of power consumption by load 2 days ago" #name for HA
+    id: srne_historical_power_consumption_by_load_2_days_ago #id for HA
+    register_type: holding
+    address: 0xF01D #register address (see modbus manual)
+    unit_of_measurement: kWh
+    accuracy_decimals: 1
+    device_class: Energy
+    state_class: total_increasing
+    filters:
+    - multiply: 0.1  
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "Historical data of power consumption by load 3 days ago" #name for HA
+    id: srne_historical_power_consumption_by_load_3_days_ago #id for HA
+    register_type: holding
+    address: 0xF01E #register address (see modbus manual)
+    unit_of_measurement: kWh
+    accuracy_decimals: 1
+    device_class: Energy
+    state_class: total_increasing  
+    filters:
+    - multiply: 0.1
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "Historical data of power consumption by load 4 days ago" #name for HA
+    id: srne_historical_power_consumption_by_load_4_day_ago #id for HA
+    register_type: holding
+    address: 0xF01F #register address (see modbus manual)
+    unit_of_measurement: kWh
+    accuracy_decimals: 1
+    device_class: Energy
+    state_class: total_increasing 
+    filters:
+    - multiply: 0.1 
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "Historical data of power consumption by load 5 days ago" #name for HA
+    id: srne_historical_power_consumption_by_load_5_days_ago #id for HA
+    register_type: holding
+    address: 0xF020 #register address (see modbus manual)
+    unit_of_measurement: kWh
+    accuracy_decimals: 1
+    device_class: Energy
+    state_class: total_increasing 
+    filters:
+    - multiply: 0.1 
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "Historical data of power consumption by load 6 days ago" #name for HA
+    id: srne_historical_power_consumption_by_load_6_days_ago #id for HA
+    register_type: holding
+    address: 0xF021 #register address (see modbus manual)
+    unit_of_measurement: kWh
+    accuracy_decimals: 1
+    device_class: Energy
+    state_class: total_increasing  
+    filters:
+    - multiply: 0.1
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "Historical data of power consumption by load 7 days ago" #name for HA
+    id: srne_historical_power_consumption_by_load_7_days_ago #id for HA
+    register_type: holding
+    address: 0xF022 #register address (see modbus manual)
+    unit_of_measurement: kWh
+    accuracy_decimals: 1
+    device_class: Energy
+    state_class: total_increasing 
+    filters:
+    - multiply: 0.1
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "historical data of PV power generation 1 day ago" #name for HA
+    id: srne_historical_pv_power_generation_1_day_ago #id for HA
+    register_type: holding
+    address: 0xF000 #register address (see modbus manual)
+    unit_of_measurement: kWh
+    accuracy_decimals: 1
+    device_class: Energy
+    state_class: total_increasing
+    filters:
+    - multiply: 0.1
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "historical data of PV power generation 2 days ago" #name for HA
+    id: srne_historical_pv_power_generation_2_days_ago #id for HA
+    register_type: holding
+    address: 0xF001 #register address (see modbus manual)
+    unit_of_measurement: kWh
+    accuracy_decimals: 1
+    device_class: Energy
+    state_class: total_increasing  
+    filters:
+    - multiply: 0.1
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "historical data of PV power generation 3 days ago" #name for HA
+    id: srne_historical_pv_power_generation_3_days_ago #id for HA
+    register_type: holding
+    address: 0xF002 #register address (see modbus manual)
+    unit_of_measurement: kWh
+    accuracy_decimals: 1
+    device_class: Energy
+    state_class: total_increasing  
+    filters:
+    - multiply: 0.1
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "historical data of PV power generation 4 days ago" #name for HA
+    id: srne_historical_pv_power_generation_4_day_ago #id for HA
+    register_type: holding
+    address: 0xF003 #register address (see modbus manual)
+    unit_of_measurement: kWh
+    accuracy_decimals: 1
+    device_class: Energy
+    state_class: total_increasing  
+    filters:
+    - multiply: 0.1
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "historical data of PV power generation 5 days ago" #name for HA
+    id: srne_historical_pv_power_generation_5_days_ago #id for HA
+    register_type: holding
+    address: 0xF004 #register address (see modbus manual)
+    unit_of_measurement: kWh
+    accuracy_decimals: 1
+    device_class: Energy
+    state_class: total_increasing  
+    filters:
+    - multiply: 0.1
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "historical data of PV power generation 6 days ago" #name for HA
+    id: srne_historical_pv_power_generation_6_days_ago #id for HA
+    register_type: holding
+    address: 0xF005 #register address (see modbus manual)
+    unit_of_measurement: kWh
+    accuracy_decimals: 1
+    device_class: Energy
+    state_class: total_increasing  
+    filters:
+    - multiply: 0.1
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "historical data of PV power generation 7 days ago" #name for HA
+    id: srne_historical_pv_power_generation_7_days_ago #id for HA
+    register_type: holding
+    address: 0xF006 #register address (see modbus manual)
+    unit_of_measurement: kWh
+    accuracy_decimals: 1
+    device_class: Energy
+    state_class: total_increasing      
+    filters:
+    - multiply: 0.1   
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "Current date year" #name for HA
+    id: srne_current_date_year #id for HA
+    register_type: holding
+    address: 0x020C #register address (see modbus manual)  
+    bitmask: 0xFF00 #(Bits 15-8)
+    internal: True
+
+# Can read this register but returns 32767, should be 0, 1, or 2
+#  - platform: modbus_controller
+#    modbus_controller_id: srne1
+#    name: "BMS Comm Enabled" #name for HA
+#    id: srne_BmsCommEnable #id for HA
+#    register_type: holding
+#    address: 0xE215 #register address (see modbus manual)
+
+# Currently getting 25 from this register but should only be 1 or 0
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "SRNE N_G_FuncEn" #name for HA
+    id: srne_N_G_FuncEn #id for HA
+    register_type: holding
+    address: 0xE207 #register address (see modbus manual)
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "Current date month" #name for HA
+    id: srne_current_date_month #id for HA
+    register_type: holding
+    address: 0x020C #register address (see modbus manual)  
+    bitmask: 0x00FF #(Bits 15-8)
+    internal: True
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "Current date day"
+    id: srne_current_date_day
+    register_type: holding
+    address: 0x020D
+    bitmask: 0xFF00 # High byte (Bits 15-8)
+    unit_of_measurement: "day"
+    accuracy_decimals: 0
+    internal: True
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "Current date hour"
+    id: srne_current_date_hour
+    register_type: holding
+    address: 0x020D
+    bitmask: 0x00FF # Low byte (Bits 7-0)
+    unit_of_measurement: "hour"
+    accuracy_decimals: 0
+    internal: True
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "Current date minute"
+    id: srne_current_date_minute
+    register_type: holding
+    address: 0x020E
+    bitmask: 0xFF00 # High byte (Bits 15-8)
+    unit_of_measurement: "minute"
+    accuracy_decimals: 0
+    internal: True
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "Current date second"
+    id: srne_current_date_second
+    register_type: holding
+    address: 0x020E
+    bitmask: 0x00FF # Low byte (Bits 7-0)
+    unit_of_measurement: "second"
+    accuracy_decimals: 0
+    internal: True
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "Charge cut-off SOC" #name for HA
+    id: srne_cutoff #id for HA
+    register_type: holding
+    address: 0xE00F #register address (see modbus manual)          
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "Nominal battery capacity" #name for HA
+    id: srne_bat_capacity #id for HA
+    register_type: holding
+    address: 0xE002 #register address (see modbus manual)   
+
+select:
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "Output Prority" #name for HA
+    id: srne_output_priority #id for HA
+    address: 0xE204
+    value_type: U_WORD
+    icon: mdi:power
+    optionsmap:
+      "SOL": 0
+      "UTI": 1
+      "SBU": 2
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "AC Output State" #name for HA
+    id: srne_CmdPowerOnOff #id for HA
+    address: 0xDF00
+    value_type: U_WORD
+    icon: mdi:power
+    optionsmap:
+      "Off": 0
+      "On": 1
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "Battery Type Select" #name for HA
+    id: srne_set_BatTypeSet #id for HA
+    address: 0xE004
+    value_type: U_WORD
+    icon: mdi:power
+    optionsmap:
+      "USE": 0
+      "SLD": 1
+      "FLD": 2
+      "GEL": 3
+      "LFP x14": 4
+      "LFP x15": 5
+      "LFP x16": 6
+      "LFP x7": 7
+      "LFP x8": 8
+      "LFP x9": 9
+      "Tern Li x7": 10
+      "Tern Li x8": 11
+      "Tern Li x13": 12
+      "Tern Li x14": 13
+
+text_sensor:
+  #-------------------------------------------------------------------------------
+  # ESP32 internal sensors
+  #-------------------------------------------------------------------------------
+  - platform: wifi_info
+    ip_address:
+      name: IP Address
+      id: ${device_internal_name}_ip_address
+    ssid:
+      name: Connected SSID
+      id: ${device_internal_name}_connected_ssid
+    mac_address:
+      name: Mac Wifi Address
+      id: ${device_internal_name}_mac_address
+
+  - platform: version
+    name: "ESPHome Version"
+    hide_timestamp: true
+
+  #-------------------------------------------------------------------------------
+  # Custom Text sensors
+  #-------------------------------------------------------------------------------
+  - platform: template
+    name: Uptime Human Readable
+    id: ${device_internal_name}_uptime_human
+    icon: mdi:clock-start
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "SRNE Power Saving Mode" #name for HA
+    id: srne_PowerSavingMode #id for HA
+    register_type: holding
+    address: 0xE20C #register address (see modbus manual)
+    raw_encode: HEXBYTES
+    lambda: |-
+      uint16_t value = modbus_controller::word_from_hex_str(x, 0);
+      switch (value) {
+        case 0: return std::string("Disabled");
+        case 1: return std::string("Enabled");
+      }
+      return x;
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "Charge State" #name for HA
+    id: srne_Charge_State #id for HA
+    icon: mdi:list-Status
+    register_type: holding
+    address: 0x010B #register address (see modbus manual)
+    raw_encode: HEXBYTES
+    lambda: |-
+      uint16_t value = modbus_controller::word_from_hex_str(x, 0);
+      switch (value) {
+        case 0: return std::string("Charge Off");
+        case 1: return std::string("Quick Charge");
+        case 2: return std::string("Const Voltage Charge");
+        case 4: return std::string("Float Charge");
+        case 5: return std::string("Reserved");
+        case 6: return std::string("Li Battery Active");
+        case 8: return std::string("Full");
+        default: return std::string("Unknown");
+      }
+      return x;
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "Output Source Priority" #name for HA
+    id: srne_OutputPriority #id for HA
+    icon: mdi:list-Status
+    register_type: holding
+    address: 0xE204 #register address (see modbus manual)
+    raw_encode: HEXBYTES
+    lambda: |-
+      uint16_t value = modbus_controller::word_from_hex_str(x, 0);
+      switch (value) {
+        case 0: return std::string("Solar");
+        case 1: return std::string("Utility");
+        case 2: return std::string("Solar, Battery, Utility");
+        default: return std::string("Unknown");
+      }
+      return x;
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "Charger Source Priority" #name for HA
+    id: srne_ChgSourcePriority #id for HA
+    icon: mdi:list-Status
+    register_type: holding
+    address: 0xE20F #register address (see modbus manual)
+    raw_encode: HEXBYTES
+    lambda: |-
+      uint16_t value = modbus_controller::word_from_hex_str(x, 0);
+      switch (value) {
+        case 0: return std::string("PV Priority");
+        case 1: return std::string("Utility Priorty");
+        case 2: return std::string("Hybrid");
+        case 3: return std::string("PV Only");
+        default: return std::string("Unknown");
+      }
+      return x;
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "User Priority" #name for HA
+    id: srne_PriorityFlag #id for HA
+    icon: mdi:list-Status
+    register_type: holding
+    address: 0x0211 #register address (see modbus manual)
+    raw_encode: HEXBYTES
+    lambda: |-
+      uint16_t value = modbus_controller::word_from_hex_str(x, 0);
+      switch (value) {
+        case 0: return std::string("No User Password");
+        case 1: return std::string("User Password");
+        case 4: return std::string("Manufacturer Password");
+        default: return std::string("Unknown");
+      }
+      return x;
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "Current Machine State" #name for HA
+    id: srne_MachineState #id for HA
+    icon: mdi:list-Status
+    register_type: holding
+    address: 0x0210 #register address (see modbus manual)
+    raw_encode: HEXBYTES
+    lambda: |-
+      uint16_t value = modbus_controller::word_from_hex_str(x, 0);
+      switch (value) {
+        case 0: return std::string("Power-on Delay");
+        case 1: return std::string("Standby State");
+        case 2: return std::string("Initialization");
+        case 3: return std::string("Soft Start");
+        case 4: return std::string("AC Power Operation");
+        case 5: return std::string("Inverter Operation");
+        case 6: return std::string("Inverter to AC Power");
+        case 7: return std::string("AC Power to Inverter");
+        case 8: return std::string("Battery Activation");
+        case 9: return std::string("Manual Shutdown");
+        case 10: return std::string("Fault");
+        default: return std::string("Unknown");
+      }
+      return x;
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "Battery Type" #name for HA
+    id: srne_BatTypeSet #id for HA
+    icon: mdi:list-Status
+    register_type: holding
+    address: 0xE004 #register address (see modbus manual)
+    raw_encode: HEXBYTES
+    lambda: |-
+      uint16_t value = modbus_controller::word_from_hex_str(x, 0);
+      switch (value) {
+        case 0: return std::string("User Defined");
+        case 1: return std::string("SLD");
+        case 2: return std::string("FLD");
+        case 3: return std::string("GEL");
+        case 4: return std::string("Lifepo4 x14");
+        case 5: return std::string("Lifepo4 x15");
+        case 6: return std::string("Lifepo4 x16");
+        case 7: return std::string("Lifepo4 x7");
+        case 8: return std::string("Lifepo4 x8");
+        case 9: return std::string("Lifepo4 x9");
+        case 10: return std::string("Ternary Lithium x7");
+        case 11: return std::string("Ternary Lithium x8");
+        case 12: return std::string("Ternary Lithium x13");
+        case 13: return std::string("Ternary Lithium x14");
+        default: return std::string("Unknown");
+      }
+      return x;
+
+  - platform: template
+    name: "SRNE Current Date/Time"
+    lambda: |-
+      int year = id(srne_current_date_year).state;
+      int month = id(srne_current_date_month).state;
+      int day = id(srne_current_date_day).state;
+      int hour = id(srne_current_date_hour).state;
+      int minute = id(srne_current_date_minute).state;
+      int second = id(srne_current_date_second).state;
+      
+      // Adjust the year from two-digit format to full year (assume baseline 2000)
+      year += 2000;
+
+      // Ensure values are within reasonable ranges to avoid crashes
+      if (year < 2000 || year > 2100 || month < 1 || month > 12 || day < 1 || day > 31 ||
+          hour < 0 || hour > 23 || minute < 0 || minute > 59 || second < 0 || second > 59) {
+        return std::string("Invalid Date/Time");
+      }
+
+      char buffer[32];
+      snprintf(buffer, sizeof(buffer), "%04d-%02d-%02d %02d:%02d:%02d",
+               year, month, day, hour, minute, second);
+      return std::string(buffer);
+
+number:
+  - platform: modbus_controller
+    id: srne_set_BatImprovChgTime
+    name: "Boost Charging Time"
+    address: 0xE012
+    value_type: U_WORD
+    unit_of_measurement: "min"
+    icon: mdi:timer-sand
+    min_value: 0
+    max_value: 300
+    step:  10
+    mode: SLIDER
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "Bulk / Boost Charge Voltage" #name for HA
+    id: srne_set_BatImprovChgVolt #id for HA
+    register_type: holding
+    address: 0xE008 #register address (see modbus manual)
+    unit_of_measurement: "V"
+    device_class: Voltage
+    value_type: U_WORD
+    multiply: 10
+    min_value: 12
+    max_value: 15
+    step: 0.1
+    mode: SLIDER
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "Set ReBulk Voltage"
+    id: srne_set_BatImprovChgBackVolt
+    address: 0xE00A
+    unit_of_measurement: "V"
+    device_class: Voltage
+    value_type: U_WORD
+    multiply: 10
+    min_value: 12
+    max_value: 14
+    step: 0.1
+    mode: SLIDER
+
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    name: "Set Battery Float Voltage" #name for HA
+    id: srne_set_BatFloatChgVolt #id for HA
+    register_type: holding
+    address: 0xE009 #register address (see modbus manual)
+    unit_of_measurement: "V"
+    device_class: Voltage
+    value_type: U_WORD
+    multiply: 10
+    min_value: 12
+    max_value: 14.4
+    step: 0.1
+    mode: SLIDER
+
+switch:
+# Password entry
+  - platform: modbus_controller
+    modbus_controller_id: srne1
+    use_write_multiple: true
+    name: "Unlock Modbus Device"
+    register_type: holding
+    address: 0xE203
+    write_lambda: |-
+      return {0};
+
+# Reset Machine
+  - platform: modbus_controller
+    name: "Reset Machine"
+    id: srne_CmdMachineReset
+    modbus_controller_id: srne1
+    use_write_multiple: true
+    register_type: holding
+    address: 0xDF01
+    write_lambda: |-
+      return {1};
