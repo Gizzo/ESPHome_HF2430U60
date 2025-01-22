@@ -1,0 +1,2 @@
+# ESPHome_HF2430U60
+ESPHome Modbus Integration SRNE HF2430U60-100
