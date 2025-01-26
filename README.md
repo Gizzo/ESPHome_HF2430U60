@@ -1,6 +1,6 @@
 # ESPHome Configuration for SRNE HF2430U60
 
-This repository contains the ESPHome configuration for integrating the SRNE HF2430U60 solar controller with Home Assistant. The setup uses Modbus communication to retrieve detailed data and control various aspects of the device.
+This repository contains the ESPHome configuration for integrating the SRNE HF2430U60 solar controller with Home Assistant. It would likely work with the similar variants like the HF2430U60, HF2320U60, etc... The setup uses Modbus communication to retrieve detailed data and control various aspects of the device.
 
 ## Features
 - **Modbus Communication**: Collect real-time data using the UART interface.
